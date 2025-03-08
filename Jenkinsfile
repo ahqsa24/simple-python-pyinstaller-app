@@ -1,45 +1,73 @@
 pipeline {
-    agent none
+    agent any
+
     stages {
+        stage('Checkout') {
+            steps {
+                script {
+                    git branch: 'python-app', url: 'https://github.com/syahrulrzk/project-akhir-jenkins.git'
+                }
+            }
+        }
+
         stage('Build') {
-            agent {
-                docker {
-                    image 'python:2-alpine'
+            steps {
+                script {
+                    sh 'python3 build_script.py'
                 }
             }
-            steps {
-                sh 'python -m py_compile sources/add2vals.py sources/calc.py'
-            }
         }
+
         stage('Test') {
-            agent {
-                docker {
-                    image 'qnib/pytest'
-                }
-            }
             steps {
-                sh 'py.test --verbose --junit-xml test-reports/results.xml sources/test_calc.py'
-            }
-            post {
-                always {
-                    junit 'test-reports/results.xml'
+                script {
+                    sh 'python3 test_script.py'
                 }
             }
         }
-        stage('Deliver') {
-            agent {
-                docker {
-                    image 'cdrx/pyinstaller-linux:python2'
+
+        stage('Deploy') {
+            steps {
+                script {
+                    // Panggil skrip deploy di sini
+                    deployApp()
+                    
+                    // Menampilkan input untuk persetujuan manual
+                    def userInput = input message: 'Apakah aplikasi sudah diuji dan siap untuk dijalankan selama 1 menit? (Klik proceed atau abort)', ok: 'Proceed', parameters: [choice(choices: ['Proceed', 'Abort'], description: 'Pilih Proceed untuk melanjutkan atau Abort untuk menghentikan', name: 'ApprovalDecision')]
+                    
+                    if (userInput == 'Abort') {
+                        error 'Pipeline dihentikan oleh pengguna.'
+                    }
+                    
+                    // Menjeda eksekusi pipeline selama 1 menit
+                    sh 'echo "Running the application for 1 minute..."'
+                    sh 'sleep 1m'
+                    
+                    // Mengakhiri aplikasi setelah 1 menit
+                    sh 'bash stop_app_script.sh'
                 }
             }
+        }
+        
+        stage('Post-Deploy') {
             steps {
-                sh 'pyinstaller --onefile sources/add2vals.py'
-            }
-            post {
-                success {
-                    archiveArtifacts 'dist/add2vals'
+                script {
+                    // Tambahkan langkah untuk mengakhiri aplikasi
+                    sh 'echo "Stopping the application..."'
+                    // Tambahkan perintah untuk memberhentikan aplikasi sesuai kebutuhan
                 }
             }
         }
     }
+}
+
+def deployApp() {
+    // Langkah-langkah deploy yang diperlukan
+    sh 'echo "Deploying the application..."'
+    // Tambahkan langkah-langkah deploy khusus Anda di sini
+}
+
+def sendNotification(message) {
+    // Langkah-langkah notifikasi (contoh: kirim ke Slack)
+    sh 'curl -X POST -H "Content-type: application/json" --data \'{"text":"${message}"}\' https://slack.com/api/chat.postMessage?token=YOUR_SLACK_TOKEN&channel=general'
 }
